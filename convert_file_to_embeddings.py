@@ -12,6 +12,8 @@ import PyPDF2
 import re
 from nltk.tokenize import sent_tokenize
 from openai.embeddings_utils import get_embedding
+import nltk
+nltk.download('punkt')
 
 ################################################################################
 ### Utility Functions
