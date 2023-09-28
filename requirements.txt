@@ -3,3 +3,7 @@ openai
 tiktoken
 pypdf2
 nltk
+matplotlib
+plotly
+scipy
+scikit-learn

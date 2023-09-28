@@ -118,7 +118,7 @@ def main():
     st.markdown("***")
 #########################################
     with st.sidebar:
-        st.session_state.model = st.dropdown("Select a model", options=["gpt-4", "gpt-3.5-turbo"], index=0)
+        st.session_state.model = st.selectbox("Select a model", options=["gpt-4", "gpt-3.5-turbo"], index=0)
         st.session_state.use_custom_data = st.checkbox("Chat with Custom Data")
         if st.session_state.use_custom_data:
             st.session_state.uploaded_file = st.file_uploader("Upload a .pdf or .txt file", type=["pdf", "txt"], accept_multiple_files=False)
