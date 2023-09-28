@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import openai
+from openai.embeddings_utils import get_embedding, distances_from_embeddings
 import convert_file_to_embeddings as embeddings_converter
 
 #openai API key
@@ -42,8 +43,29 @@ if "input_disabled" not in st.session_state:
     st.session_state.input_disabled = False
 
 def create_embeddings_context(question, df, max_len=1800, size="ada"):
-   """Create a context for a question by finding the most similar context from the dataframe"""
-    
+    """Create a context for a question by finding the most similar context from the dataframe"""
+    # Convert question to embeddings
+    q_embeddings = get_embedding(question, engine='text-embedding-ada-002')
+   
+    # Get the distances from the embeddings
+    df['distances'] = distances_from_embeddings(q_embeddings, df['embeddings'].values, distance_metric='cosine')
+
+    returns = []
+    cur_len = 0
+
+    # Sort by distance and add the text to the context until the context is too long
+    for i, row in df.sort_values('distances', ascending=True).iterrows():
+        # Add the length of the text to the current length
+        cur_len += row['n_tokens'] + 4
+        # If the context is too long, break
+        if cur_len > max_len:
+            break
+        # Else add it to the text that is being returned
+        returns.append(row["text"])
+
+    # Return the context
+    return "\n\n###\n\n".join(returns)
+
 def convert_inputs_to_embeddings():
     """Converts uploaded file and text area input into embeddings"""
     if st.session_state.file_embeddings is None:
@@ -64,13 +86,21 @@ def get_context():
         file_embeddings_context = create_embeddings_context(quetion=last_message, 
                                                             df=st.session_state.file_embeddings, 
                                                             max_len=900)
+        text_embeddings_context = create_embeddings_context(quetion=last_message,
+                                                            df=st.session_state.text_embeddings,
+                                                            max_len=900)
 
     context = f"""
-
+1) You are 'Custom GPT', a chatbot specialized in responding to questions about a user's custom data.
+2) Your primary function is to converse with the user in a lively and friendly manner.
+3) Users are expected to provide custom data, and so, as much as possible, you must provide answers to the questions based on the available [CONTEXT EMBEDDINGS].
+4) If the [CONTEXT EMBEDDINGS] do not contain the relevant answer or the distance values are too low, rely on your general knowledgebase to provide an appropriate response.
+5) Do not inform users about the use of [CONTEXT EMBEDDINGS] or your general knowledgebase.
+6) Refrain from responding to queries that violate standard moderation policies. Users should be treated with respect and courtesy, and inappropriate content should not be addressed.
 [CONTEXT EMBEDDINGS]\n{file_embeddings_context}\n{text_embeddings_context}
 """
 
-
+    return context
 
 def main():
     head_col = st.columns([1,8])
@@ -88,6 +118,7 @@ def main():
     st.markdown("***")
 #########################################
     with st.sidebar:
+        st.session_state.model = st.dropdown("Select a model", options=["gpt-4", "gpt-3.5-turbo"], index=0)
         st.session_state.use_custom_data = st.checkbox("Chat with Custom Data")
         if st.session_state.use_custom_data:
             st.session_state.uploaded_file = st.file_uploader("Upload a .pdf or .txt file", type=["pdf", "txt"], accept_multiple_files=False)
@@ -123,12 +154,12 @@ def main():
 
             # Build messages to be sent to ChatGPT
             context = get_context()
-            messages = [{"role":"System", "content":context}]
-            # Add message history to messages list
+            messages = [{"role":"system", "content":context}]
+            # Add the last 20 messages in the conversation to the messages list
             messages.extend(st.session_state.messages[-20:])
-
+            # Generate response from ChatGPT
             for response in openai.ChatCompletion.create(
-                                                    model=st.session_state["model"],
+                                                    model=st.session_state.model,
                                                     messages=messages,
                                                     stream=True,
                                                 ):
