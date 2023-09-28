@@ -2,6 +2,7 @@
 ### Step 1 Imports + Functions (the Step numbering scheme is kept as reference to the original code from openai tutorial)
 ################################################################################
 import os.path
+import io
 
 import pandas as pd
 import tiktoken
@@ -16,14 +17,14 @@ from openai.embeddings_utils import get_embedding
 ### Utility Functions
 ################################################################################
 def read_pdf_file(pdf_file):
-    with open(pdf_file, 'rb') as file:
-        pdf_reader = PyPDF2.PdfReader(file)
-        num_pages = len(pdf_reader.pages)
-        text = ""
+    input_data = io.BytesIO(pdf_file.read())
+    pdf_reader = PyPDF2.PdfReader(input_data)
+    num_pages = len(pdf_reader.pages)
+    text = ""
 
-        for page in range(num_pages):
-            page_obj = pdf_reader.pages[page]
-            text += page_obj.extract_text()
+    for page in range(num_pages):
+        page_obj = pdf_reader.pages[page]
+        text += page_obj.extract_text()
 
     text = re.sub(r'\s+', ' ', text).strip()
     text = text.encode('utf-8').decode('unicode_escape')
@@ -31,8 +32,7 @@ def read_pdf_file(pdf_file):
     return text
 
 def read_text_file(text_file):
-    with open(text_file, 'r') as file:
-        text = file.read()
+    text = text_file.getvalue()
 
     text = re.sub(r'\s+', ' ', text).strip()
 
@@ -180,7 +180,7 @@ def generate_embeddings(api_key, input, is_text_file=False, is_pdf_file=False):
 
     # Assign the embeddings to a new column in the dataframe
     df['embeddings'] = embeddings
-    
+
     # print(f"Saving embeddings to {embeddings_file}..")
     # df.to_json(embeddings_file)
 

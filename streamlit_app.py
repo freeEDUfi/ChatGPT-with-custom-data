@@ -16,7 +16,7 @@ The data can be uploaded as a .pdf or .txt file, or can be copy-pasted onto the 
 The data will be used as context provided to ChatGPT-4."""
 
 project_icon = "icon.png"
-st.set_page_config(page_title=project_title, initial_sidebar_state='collapsed', page_icon=project_icon)
+st.set_page_config(page_title=project_title, initial_sidebar_state='expanded', page_icon=project_icon)
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -36,11 +36,6 @@ if "file_embeddings" not in st.session_state:
     st.session_state.file_embeddings = None
 if "text_embeddings" not in st.session_state:
     st.session_state.text_embeddings = None
-
-if "input_value" not in st.session_state:
-    st.session_state.input_value = ""
-if "input_disabled" not in st.session_state:
-    st.session_state.input_disabled = False
 
 def create_embeddings_context(question, df, max_len=1800, size="ada"):
     """Create a context for a question by finding the most similar context from the dataframe"""
@@ -68,35 +63,36 @@ def create_embeddings_context(question, df, max_len=1800, size="ada"):
 
 def convert_inputs_to_embeddings():
     """Converts uploaded file and text area input into embeddings"""
-    if st.session_state.file_embeddings is None:
+    if st.session_state.uploaded_file is not None:
         if st.session_state.uploaded_file.type == "text/plain":
             st.session_state.file_embeddings = embeddings_converter.generate_embeddings(openai.api_key, st.session_state.uploaded_file, is_text_file=True)
         elif st.session_state.uploaded_file.type == "application/pdf":
             st.session_state.file_embeddings = embeddings_converter.generate_embeddings(openai.api_key, st.session_state.uploaded_file, is_pdf_file=True)
-    if st.session_state.text_embeddings is None:
+
+    if st.session_state.custom_data_text != "":
         st.session_state.text_embeddings = embeddings_converter.generate_embeddings(openai.api_key, st.session_state.custom_data_text)
 
 def get_context():
     file_embeddings_context = ""
     text_embeddings_context = ""
-    last_message = st.session_state.messages[-1]
+    last_message = st.session_state.messages[-1]['content']
 
     if st.session_state.use_custom_data:
-        convert_inputs_to_embeddings()
-        file_embeddings_context = create_embeddings_context(quetion=last_message, 
-                                                            df=st.session_state.file_embeddings, 
-                                                            max_len=900)
-        text_embeddings_context = create_embeddings_context(quetion=last_message,
-                                                            df=st.session_state.text_embeddings,
-                                                            max_len=900)
+        if st.session_state.file_embeddings is not None:
+            file_embeddings_context = create_embeddings_context(question=last_message, 
+                                                                df=st.session_state.file_embeddings, 
+                                                                max_len=900)
+        if st.session_state.text_embeddings is not None:
+            text_embeddings_context = create_embeddings_context(question=last_message,
+                                                                df=st.session_state.text_embeddings,
+                                                                max_len=900)
 
     context = f"""
-1) You are 'Custom GPT', a chatbot specialized in responding to questions about a user's custom data.
-2) Your primary function is to converse with the user in a lively and friendly manner.
-3) Users are expected to provide custom data, and so, as much as possible, you must provide answers to the questions based on the available [CONTEXT EMBEDDINGS].
-4) If the [CONTEXT EMBEDDINGS] do not contain the relevant answer or the distance values are too low, rely on your general knowledgebase to provide an appropriate response.
-5) Do not inform users about the use of [CONTEXT EMBEDDINGS] or your general knowledgebase.
-6) Refrain from responding to queries that violate standard moderation policies. Users should be treated with respect and courtesy, and inappropriate content should not be addressed.
+Assume the persona of 'Custom GPT', a chatbot specialized in responding to questions about a user's custom data.
+Your primary function is to converse with the user in a lively and friendly manner.
+Prioritize using the provided [CONTEXT EMBEDDINGS] generated from the user's custom data.
+Do not inform users about the use of [CONTEXT EMBEDDINGS] or your general knowledgebase.
+Refrain from responding to queries that violate standard moderation policies. Users should be treated with respect and courtesy, and inappropriate content should not be addressed.
 [CONTEXT EMBEDDINGS]\n{file_embeddings_context}\n{text_embeddings_context}
 """
 
@@ -124,23 +120,23 @@ def main():
             st.session_state.uploaded_file = st.file_uploader("Upload a .pdf or .txt file", type=["pdf", "txt"], accept_multiple_files=False)
             st.session_state.custom_data_text = st.text_area("Or copy-paste your data here", height=200)
             st.write("**Note:** OpenAI API has a request limit; if your custom data is large, you may have to wait a while for the embeddings to be generated.")
-        st.write(f"File embeddings generated? {st.session_state.file_embeddings is not None}")
-        st.write(f"Text embeddings generated? {st.session_state.text_embeddings is not None}")
-        if st.button("Reset Embeddings"):
-            st.session_state.file_embeddings = None
-            st.session_state.text_embeddings = None
-            st.success("Embeddings have been reset.")
-        
+            if st.button("Generate Embeddings"):
+                with st.spinner("Generating embeddings..."):
+                    convert_inputs_to_embeddings()
+                st.success("Embeddings have been generated.")
+            st.write(f"File embeddings generated? {st.session_state.file_embeddings is not None}")
+            st.write(f"Text embeddings generated? {st.session_state.text_embeddings is not None}")
+            if st.button("Reset Embeddings"):
+                st.session_state.file_embeddings = None
+                st.session_state.text_embeddings = None
+                st.success("Embeddings have been reset.")
+            
     for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
     # Accept user input
-    if prompt := st.chat_input(placeholder=st.session_state.input_value, disabled=st.session_state.input_disabled):
-        # Disable input and display loading indicator
-        st.session_state.input_value = "Generating response, please wait 😊"
-        st.session_state.input_disabled = True
-
+    if prompt := st.chat_input(placeholder="Type a message..."):
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         # Display user message in chat message container
@@ -167,11 +163,6 @@ def main():
                 message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
         st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-        # Reset input and re-enable input
-        st.session_state.input_value = ""
-        st.session_state.input_disabled = False
-        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
